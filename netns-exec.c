@@ -34,6 +34,27 @@ static void usage(const char *argv0, bool is_error)
 }
 
 
+/*
+ * Check if namespace name is valid.
+ *
+ * The iproute2 code doesn't seem to do any validation. That is
+ * probably because it's normally run as root, so the lack of
+ * validation doesn't allow the user to do anything they couldn't do
+ * already. This is not true for a suid root program, so we have to do
+ * the validation.
+ *
+ * Because the namespace is implemented as a file, the character '/'
+ * and the names ".", ".." and "" are forbidden. (Character '\0' is
+ * also forbidden, but cannot be passed in a command line argument.)
+ */
+static bool is_valid_ns(const char *ns)
+{
+    return ns[0] != '\0'
+        && strcmp(ns, ".") != 0 && strcmp(ns, "..") != 0
+        && strchr(ns, '/') == NULL;
+}
+
+
 static void drop_root_privileges(void)
 {
     if (setuid(getuid()) < 0) {
@@ -50,11 +71,12 @@ static void drop_root_privileges(void)
 int main(int argc, char *argv[])
 {
     // parse arguments
+    char *argv0 = argv[0];
     if (argc < 2 || (argc == 2 && strcmp(argv[1], "--") == 0))
         // no netns given
-        usage(argv[0], true);
+        usage(argv0, true);
     if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0)
-        usage(argv[0], false);
+        usage(argv0, false);
 
     if (strcmp(argv[1], "--") == 0) {
         argv++;
@@ -63,7 +85,12 @@ int main(int argc, char *argv[])
     else if (argv[1][0] == '-') {
         // invalid command line option
         fprintf(stderr, "Unknown option: %s\n", argv[1]);
-        usage(argv[0], true);
+        usage(argv0, true);
+    }
+
+    if (! is_valid_ns(argv[1])) {
+        fputs("Invalid namespace\n", stderr);
+        usage(argv0, true);
     }
 
 
