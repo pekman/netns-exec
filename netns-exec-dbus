@@ -1,0 +1,65 @@
+#!/bin/sh
+
+# find D-Bus session bus addresses
+dbus_addr="$DBUS_SESSION_BUS_ADDRESS"
+if [ -z "$dbus_addr" ]; then
+    machine_id="$(cat /etc/machine-id 2>/dev/null)"
+    display_num="${DISPLAY#*:}"
+    display_num="${display_num%.*}"
+    if [ -n "$machine_id" ] && [ -n "$display_num" ]; then
+        file="$HOME/.dbus/session-bus/$machine_id-$display_num"
+        dbus_addr="$(grep -m 1 '^DBUS_SESSION_BUS_ADDRESS=' "$file")"
+        dbus_addr="${dbus_addr#DBUS_SESSION_BUS_ADDRESS=}"
+    fi
+fi
+
+# check if the addresses contain a normal (non-abstract) unix domain
+# socket transport
+has_normal_unix_transport () {
+    local IFS
+    IFS=';'
+    for addr in $dbus_addr; do
+        case "$addr" in
+            unix:path=*|unix:*,path=*)
+                return 0 ;;
+        esac
+    done
+    return 1
+}
+
+# don't start the proxy if there is no d-bus address or if there is a
+# normal unix transport, which works fine without a proxy
+if [ -n "$dbus_addr" ] && ! has_normal_unix_transport; then
+    # find abstract unix transport
+    IFS=';'
+    for addr in $dbus_addr; do
+        case "$addr" in
+            unix:abstract=*|unix:*,abstract=*)
+                # parse address, get socket name and guid
+                name=
+                guid_opt=
+                IFS=','
+                for part in ${addr#unix:}; do
+                    case "$part" in
+                        abstract=*)
+                            name="${part#abstract=}" ;;
+                        guid=*)
+                            guid_opt=",$part" ;;
+                    esac
+                done
+
+                if [ -n "$name" ]; then
+                    # start proxy and kill it when shell exits
+                    proxy_path="/tmp/dbus-proxy-$$"
+                    socat UNIX-LISTEN:"$proxy_path",fork ABSTRACT-CONNECT:"$name" &
+                    trap "kill -TERM $! && wait" 0
+                    export DBUS_SESSION_BUS_ADDRESS="unix:path=$proxy_path$guid_opt"
+                fi
+                break
+                ;;
+        esac
+    done
+fi
+
+
+netns-exec "$@"

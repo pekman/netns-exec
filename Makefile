@@ -23,6 +23,7 @@ $(PROG): $(OBJS)
 
 install: $(PROG)
 	install -D -m4755 -t$(BINDIR) $(PROG)
+	install -m755 -t$(BINDIR) netns-exec-dbus
 
 uninstall:
 	rm -fv $(BINDIR)/$(PROG)
