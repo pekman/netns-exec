@@ -14,6 +14,7 @@
 #include <errno.h>
 #include <string.h>
 #include <stdbool.h>
+#include <fcntl.h>
 
 #include "namespace.h"
 
@@ -106,6 +107,16 @@ int main(int argc, char *argv[])
     // switch network namespace using iproute2's function
     if (netns_switch(argv[1]) < 0)
         return EXIT_OTHER_ERROR;
+
+
+    // allow non-root user to use the ping command
+    int fd = open("/proc/sys/net/ipv4/ping_group_range", O_WRONLY);
+    if (fd == -1) {
+        fprintf(stderr, "Error setting ping_group_range: %s\n", strerror(errno));
+        usage(argv0, true);
+    }
+    dprintf(fd, "0 2147483647\n");
+    close(fd);
 
 
     drop_root_privileges();
